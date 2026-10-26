@@ -4,10 +4,40 @@ import asyncio
 from datetime import datetime
 import pytz
 
+if sys.platform == "win32":
+    try:
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    except Exception:
+        pass
+
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b"Bot Monev is running and healthy!")
+
+    def log_message(self, format, *args):
+        # Mute log akses web request agar terminal tetap bersih
+        pass
+
+def start_health_server():
+    port = int(os.getenv("PORT", "10000"))
+    try:
+        server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+        print(f"🌐 Health check web server aktif di port {port} (siap untuk Render)")
+        server.serve_forever()
+    except Exception as e:
+        print(f"⚠️ Gagal menjalankan health check web server di port {port}: {e}")
+
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
@@ -269,6 +299,9 @@ async def post_shutdown(application):
 
 
 def main():
+    # Jalankan health check web server di background thread (diperlukan untuk Render Web Service)
+    threading.Thread(target=start_health_server, daemon=True).start()
+
     request_config = HTTPXRequest(
         connect_timeout=30.0,
         read_timeout=30.0,
@@ -297,5 +330,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (KeyboardInterrupt, SystemExit):
+        print("\n👋 Bot dimatikan.")
+
 
